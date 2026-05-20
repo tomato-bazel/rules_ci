@@ -1,0 +1,56 @@
+# Bazel rules for a CI configuration IR + provable translations
+# between GitLab CI, GitHub Actions, and Bazel rule sets.
+#
+# v0.0.1 scaffold: shipping the design, the pinned upstream JSON
+# schemas, a Rust workspace skeleton with a working GitLab CI
+# parser + aggregator binary, and Bazel rule stubs for the
+# eventual `ci_yaml_translate(...)` / `ci_yaml_aggregate(...)`
+# surface. The Lean 4 IR + correctness theorems are placeholders;
+# see [`docs/DESIGN.md`](docs/DESIGN.md) for the proof strategy.
+module(
+    name = "rules_ci_ir",
+    version = "0.0.1",
+)
+
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "rules_rust", version = "0.70.0")
+
+# Pin gitlab-ci.json + github-workflow.json from their canonical
+# upstream sources. Refresh procedure in docs/DESIGN.md.
+ci_schemas = use_extension("//schemas:extensions.bzl", "ci_schemas")
+use_repo(
+    ci_schemas,
+    "gitlab_ci_schema",
+    "github_workflow_schema",
+)
+
+# Rust toolchain for the translator binaries. Cargo-style workspace
+# under //translator/.
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2021",
+    versions = ["1.95.0"],
+)
+use_repo(rust, "rust_toolchains")
+register_toolchains("@rust_toolchains//:all")
+
+crate = use_extension(
+    "@rules_rust//crate_universe:extensions.bzl",
+    "crate",
+)
+crate.from_cargo(
+    name = "rules_ci_ir_crates",
+    cargo_lockfile = "//translator:Cargo.lock",
+    manifests = [
+        "//translator:Cargo.toml",
+        "//translator/ci-ir:Cargo.toml",
+        "//translator/gitlab-parse:Cargo.toml",
+        "//translator/aggregator:Cargo.toml",
+    ],
+)
+use_repo(crate, "rules_ci_ir_crates")
+
+# Dev-only.
+bazel_dep(name = "rules_shell", version = "0.6.1", dev_dependency = True)
+bazel_dep(name = "stardoc", version = "0.7.2", dev_dependency = True)

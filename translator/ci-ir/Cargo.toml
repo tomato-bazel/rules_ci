@@ -1,0 +1,11 @@
+[package]
+name = "ci-ir"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Neutral IR for CI pipeline configuration (GitLab / GitHub / Bazel)."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true

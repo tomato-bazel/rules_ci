@@ -1,0 +1,7 @@
+bazel-*
+MODULE.bazel.lock
+.claude/
+.DS_Store
+target/
+# Cargo.lock IS committed under translator/ — required by
+# rules_rust's crate_universe to pin Bazel-side transitive deps.

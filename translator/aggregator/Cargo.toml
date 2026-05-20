@@ -1,0 +1,19 @@
+[package]
+name = "ci-aggregator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Aggregate a fleet of GitLab .gitlab-ci.yml files into a normalized IR + Markdown similarity report. Drop-in Rust replacement for savvi's ci_analysis Python aggregator."
+
+[[bin]]
+name = "ci_aggregator"
+path = "src/main.rs"
+
+[dependencies]
+ci-ir = { path = "../ci-ir" }
+gitlab-parse = { path = "../gitlab-parse" }
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
