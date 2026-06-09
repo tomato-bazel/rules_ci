@@ -90,6 +90,11 @@ structure Job where
   artifacts : List ArtifactSpec
   cache     : List CachePath
   outputs   : Map String String       -- exported step outputs
+  publish   : Option Publish          -- ship the build to a hosting surface
+  deriving Repr, BEq
+
+inductive Publish where               -- structured publish targets
+  | pages (path : String)             -- publish `path` as the repo's Pages site
   deriving Repr, BEq
 
 structure Pipeline where
@@ -117,6 +122,56 @@ Diagnostics are first-class outputs; a translation that emits
 diagnostics is still a translation, but downstream consumers
 (the Bazel rule, the registry) can treat them as warnings or
 hard errors.
+
+### Pages — the first publish node
+
+`publish` is where the IR earns its keep most visibly: "publish this
+directory as the repo's static site" is one intent the two backends
+realize with almost nothing in common. A job carrying
+`publish := some (.pages "public")` lowers as:
+
+**`gitlab-emit`** — GitLab Pages is a magic job named `pages` whose
+`public/` artifact is served (the publish dir is `public/`, or set via
+`pages.publish:` on 17.x+):
+
+```yaml
+pages:
+  stage: pages
+  script:
+    - <job.script>            # build the site into public/
+  artifacts:
+    paths: [public]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+```
+
+**`github-emit`** — GitHub Pages is a workflow that uploads the directory
+as a Pages artifact and deploys it, with the right permissions and
+environment:
+
+```yaml
+jobs:
+  pages:
+    runs-on: ubuntu-latest
+    permissions: { pages: write, id-token: write }
+    environment: github-pages
+    steps:
+      - run: <job.script>                       # build the site
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: public }
+      - uses: actions/deploy-pages@v4
+```
+
+The shared core — `job.script` builds the site, then a directory is
+published — is exactly one `Publish.Pages path`. Everything else (the
+magic job name + `public/` artifact vs. the upload/deploy actions +
+`permissions` + `environment`) is emitter-private. `rules_gitlab`'s
+`gitlab_pages_job` macro is the hand-written precursor of the
+`gitlab-emit` rendering; promoting it here means a repo authors the
+publish *once*, in the neutral IR, and gets both backends.
+
+Structural invariant (level A): at most one job may carry a
+`Publish.Pages`, and `gitlab-emit` names that job `pages`.
 
 ## Schemas + pinning
 
@@ -224,8 +279,8 @@ expands to a `sh_test` or `genrule` depending on artifacts.
 | **0.0.1** *(this)* | Scaffold: design doc, schema pins, Rust workspace skeleton, GitLab parser stub, aggregator stub, Bazel rule stubs. No Lean code yet. |
 | **0.1.0** | Working GitLab parser → IR; aggregator Rust binary that replaces the savvi `ci_analysis` Python aggregator (same Markdown report); `ci_yaml_aggregate` rule. |
 | **0.2.0** | `github-parse`. GitLab ↔ IR round-trip property tests. |
-| **0.3.0** | `gitlab-emit` + `github-emit`. End-to-end `ci-translate --from gitlab --to github` works. |
-| **0.4.0** | `bazel-emit` + the `ci_job` runtime macro. GitLab → Bazel `sh_test` graphs. |
+| **0.3.0** | `gitlab-emit` + `github-emit`. End-to-end `ci-translate --from gitlab --to github` works. Includes the `Publish.Pages` node (IR type landed in 0.0.1) — both emitters render a `pages` publish (see *Pages — the first publish node*). |
+| **0.4.0** | `bazel-emit` + the `ci_job` runtime macro. GitLab → Bazel `sh_test` graphs. The neutral `ci_pages(site)` authoring macro lands here, superseding `rules_gitlab`'s `gitlab_pages_job`. |
 | **0.5.0** | Lean 4 IR formalization + structural correctness theorems (level A above). Property tests are extracted/mirrored. |
 | **0.6.0+** | Bisimulation theorems under abstract semantics (level B). |
 

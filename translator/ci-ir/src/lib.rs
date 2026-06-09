@@ -109,6 +109,32 @@ pub struct JobShape {
     /// the GitHub parser does.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<String>,
+
+    /// Structured publish target — the one "ship a built artifact to a
+    /// hosting surface" concern that GitLab and GitHub express very
+    /// differently (so it earns the IR its keep). `None` for ordinary
+    /// jobs. Emitters render it per platform; see `Publish`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publish: Option<Publish>,
+}
+
+/// A structured publish target. The IR models the *intent* — "publish this
+/// directory as the repo's static site" — and each emitter renders the
+/// platform-specific mechanism. This is the canonical case of the IR hiding
+/// genuine divergence: GitLab Pages is a magic `pages` job whose `public/`
+/// artifact is served; GitHub Pages is a workflow that runs
+/// `actions/upload-pages-artifact` then `actions/deploy-pages` with
+/// `permissions: { pages: write, id-token: write }` and a `github-pages`
+/// environment.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum Publish {
+    /// Publish a directory as the repository's Pages site.
+    Pages {
+        /// Directory (relative to the job's working dir) holding the
+        /// rendered site root, with `index.html` at its top level.
+        path: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
