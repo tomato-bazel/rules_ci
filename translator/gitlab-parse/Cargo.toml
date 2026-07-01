@@ -3,7 +3,7 @@ name = "gitlab-parse"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Parse `.gitlab-ci.yml` into the rules_ci_ir IR."
+description = "Parse `.gitlab-ci.yml` into the rules_ci IR."
 
 [dependencies]
 ci-ir = { path = "../ci-ir" }

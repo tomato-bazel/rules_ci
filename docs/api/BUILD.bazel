@@ -1,0 +1,32 @@
+# GENERATED API reference fragments — stardoc renders each public defs.bzl from its
+# docstrings/signatures, so the README's API section is generated FROM THE CODE and can't
+# drift (the //:readme.write_test gate enforces regeneration). Composed by //:readme.
+load("@stardoc//stardoc:stardoc.bzl", "stardoc")
+
+package(default_visibility = ["//visibility:public"])
+
+stardoc(
+    name = "release_api",
+    out = "release_api.md",
+    input = "//release:defs.bzl",
+    deps = ["//release:defs"],
+)
+
+stardoc(
+    name = "hooks_api",
+    out = "hooks_api.md",
+    input = "//hooks:defs.bzl",
+    deps = ["//hooks:defs"],
+)
+
+stardoc(
+    name = "project_api",
+    out = "project_api.md",
+    input = "//project:defs.bzl",
+    # project/defs.bzl loads external rulesets — stardoc needs their bzl_libraries to resolve.
+    deps = [
+        "//project:defs",
+        "@rules_gitlab//gitlab:defs_bzl",
+        "@rules_readme//readme:defs_bzl",
+    ],
+)

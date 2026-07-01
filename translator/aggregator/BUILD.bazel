@@ -1,0 +1,18 @@
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@rules_ci_crates//:defs.bzl", "all_crate_deps")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["Cargo.toml"])
+
+# ci-aggregator: the multi-member fleet report binary (crate `ci-aggregator`, bin `ci_aggregator`).
+# Path deps → //translator/ci-ir + //translator/gitlab-parse.
+rust_binary(
+    name = "ci_aggregator",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    deps = [
+        "//translator/ci-ir:ci_ir",
+        "//translator/gitlab-parse:gitlab_parse",
+    ] + all_crate_deps(package_name = "translator/aggregator"),
+)

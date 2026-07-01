@@ -1,4 +1,4 @@
-"""User-facing Bazel rules for rules_ci_ir.
+"""User-facing Bazel rules for rules_ci.
 
 v0.0.1 ships one working rule (`ci_yaml_aggregate`, backed by the
 Rust aggregator binary) and the public signatures of the others

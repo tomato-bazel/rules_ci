@@ -1,6 +1,6 @@
 //! `ci_aggregator` — fleet CI analysis. Reads N member
 //! `.gitlab-ci.yml` files, normalizes them through the
-//! `rules_ci_ir` IR, and emits both a machine-readable JSON
+//! `rules_ci` IR, and emits both a machine-readable JSON
 //! projection and a Markdown similarity report.
 //!
 //! Drop-in Rust replacement for the Python aggregator that lived

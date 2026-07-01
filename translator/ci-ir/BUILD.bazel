@@ -1,0 +1,16 @@
+load("@rules_rust//rust:defs.bzl", "rust_library")
+load("@rules_ci_crates//:defs.bzl", "all_crate_deps")
+
+package(default_visibility = ["//visibility:public"])
+
+# Exported so the crate_universe `from_cargo` manifest label //translator/ci-ir:Cargo.toml resolves.
+exports_files(["Cargo.toml"])
+
+# ci-ir: the neutral IR for CI pipeline config (GitLab / GitHub / Bazel). No path deps.
+rust_library(
+    name = "ci_ir",
+    srcs = ["src/lib.rs"],
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    deps = all_crate_deps(package_name = "translator/ci-ir"),
+)

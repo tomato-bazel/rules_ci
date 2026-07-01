@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to rules_ci_ir. The format is loosely
+All notable changes to rules_ci. The format is loosely
 [Keep a Changelog](https://keepachangelog.com/) — version headers
 mirror the published bazel-registry entries.
 

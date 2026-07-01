@@ -1,4 +1,4 @@
-//! Parse `.gitlab-ci.yml` into the rules_ci_ir IR.
+//! Parse `.gitlab-ci.yml` into the rules_ci IR.
 //!
 //! Scope: structural projection. GitLab's reserved top-level
 //! keywords (`stages`, `variables`, `include`, `default`,

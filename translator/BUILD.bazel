@@ -1,5 +1,10 @@
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library")
-load("@rules_ci_ir_crates//:defs.bzl", "all_crate_deps")
+# The Rust CI-IR translator (gitlab↔github↔bazel). The per-crate rust_library/rust_binary
+# targets live in each crate's own package (translator/{ci-ir,gitlab-parse,aggregator}/BUILD.bazel)
+# — required so the crate_universe `from_cargo` manifest labels (//translator/<crate>:Cargo.toml)
+# resolve. This package only exports the workspace root manifest + lockfile.
+#
+# v0.0.1 ships ci-ir (IR types + structural validate), gitlab-parse (YAML → IR), and the
+# aggregator binary (multi-member fleet report). github-parse / *-emit crates land per docs/DESIGN.md.
 
 package(default_visibility = ["//visibility:public"])
 
@@ -7,35 +12,3 @@ exports_files([
     "Cargo.toml",
     "Cargo.lock",
 ])
-
-# v0.0.1 ships the three crates the scaffold actually exercises:
-# `ci-ir` (IR types + structural validate), `gitlab-parse` (YAML →
-# IR), and `aggregator` (the multi-member fleet report binary).
-# `github-parse`, `gitlab-emit`, `github-emit`, and `bazel-emit`
-# crates land per the roadmap in docs/DESIGN.md.
-
-rust_library(
-    name = "ci_ir",
-    srcs = ["ci-ir/src/lib.rs"],
-    edition = "2021",
-    crate_root = "ci-ir/src/lib.rs",
-    deps = all_crate_deps(package_name = "translator/ci-ir"),
-)
-
-rust_library(
-    name = "gitlab_parse",
-    srcs = ["gitlab-parse/src/lib.rs"],
-    edition = "2021",
-    crate_root = "gitlab-parse/src/lib.rs",
-    deps = [":ci_ir"] + all_crate_deps(package_name = "translator/gitlab-parse"),
-)
-
-rust_binary(
-    name = "ci_aggregator",
-    srcs = ["aggregator/src/main.rs"],
-    edition = "2021",
-    deps = [
-        ":ci_ir",
-        ":gitlab_parse",
-    ] + all_crate_deps(package_name = "translator/aggregator"),
-)

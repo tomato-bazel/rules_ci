@@ -1,3 +1,49 @@
+load("@rules_readme//readme:defs.bzl", "markdown_fragment", "readme")
+
 package(default_visibility = ["//visibility:public"])
 
 exports_files(["LICENSE"])
+
+# ─── Drift-protected, generated README ────────────────────────────────────────
+# The API reference is GENERATED from the .bzl docstrings by stardoc (//docs/api), composed
+# into README.md by rules_readme, and drift-gated by `//:readme.write_test` (in //:gates, run
+# by CI + the pre-commit hook). Regenerate: `bazel run //:readme.write`. This is the fastverk
+# "docs can't go stale" convention, dogfooded on rules_ci itself.
+markdown_fragment(
+    name = "api_project",
+    src = "//docs/api:project_api.md",
+    slot = "api",
+    weight = 10,
+)
+
+markdown_fragment(
+    name = "api_release",
+    src = "//docs/api:release_api.md",
+    slot = "api",
+    weight = 20,
+)
+
+markdown_fragment(
+    name = "api_hooks",
+    src = "//docs/api:hooks_api.md",
+    slot = "api",
+    weight = 30,
+)
+
+readme(
+    name = "readme",
+    template = "README.md.tmpl",
+    fragments = [
+        ":api_project",
+        ":api_release",
+        ":api_hooks",
+    ],
+    link_check = False,  # stardoc emits raw HTML anchors (#sym-attr), not rules_readme mdrefs
+    write_to = "README.md",
+)
+
+# rules_ci's own gate suite — the README drift gate (CI + pre-commit run this).
+test_suite(
+    name = "gates",
+    tests = [":readme.write_test"],
+)

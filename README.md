@@ -1,89 +1,294 @@
-# rules_ci_ir
+# rules_ci
 
-Bazel rules + a Rust translator stack for moving CI pipeline
-configuration between **GitLab CI**, **GitHub Actions**, and
-**Bazel** — mediated by a neutral IR with Lean 4 correctness
-theorems.
+The fastverk **CI / release / versioning** foundation: generate a repo's CI pipeline by
+convention, make its shippable **products** first-class in the build graph, **drift-gate** its
+generated files, drive **automated versioning** from the public surface — plus a Rust **CI-IR
+translator** (GitLab ↔ GitHub ↔ Bazel, mediated by a neutral IR).
 
-> **Status**: v0.0.1 scaffold. Pinned schemas, working GitLab
-> CI parser + Rust aggregator binary, Bazel rule stubs, and a
-> comprehensive design doc are live. GitHub-parse, the emit-side
-> translators, the `bazel-emit` macro layer, and the Lean
-> formalization are roadmap items — see
-> [`docs/DESIGN.md`](docs/DESIGN.md).
+> **This README is GENERATED — do not edit it directly.** The API reference below is rendered
+> from the `.bzl` docstrings by **stardoc**; the whole file is composed by **rules_readme** and
+> drift-gated by `//:readme.write_test` (run in CI + the pre-commit hook). To change it, edit the
+> `.bzl` docstrings or `README.md.tmpl`, then run `bazel run //:readme.write`.
 
-## Quick start (today)
+
+
+## The three-layer spine
+
+`fastverk_project` (this module) ← `aion_framework_library` (aion/rules) ← `aion_app` (studio).
+A repo calls the one macro for its layer; it composes the CI pipeline (rules_gitlab `gitlab_ci`),
+the README badges (rules_readme), the `release_artifacts` products aspect, the `git_hooks`
+pre-commit installer, and the `version/` tooling — all from convention.
+
+## Quick start
 
 ```python
 # MODULE.bazel
-bazel_dep(name = "rules_ci_ir", version = "0.0.1")
+bazel_dep(name = "rules_ci", version = "0.0.1")
 ```
 
 ```python
-# BUILD.bazel
-load("@rules_ci_ir//rules:defs.bzl", "ci_yaml_aggregate")
+# BUILD.bazel — generate + drift-gate this repo's .gitlab-ci.yml, README badges, and hooks
+load("@rules_ci//project:defs.bzl", "fastverk_project")
 
-ci_yaml_aggregate(
-    name = "fleet_report",
-    members = {
-        "service-a": "//path/to/service-a:.gitlab-ci.yml",
-        "service-b": "//path/to/service-b:.gitlab-ci.yml",
-    },
-)
+fastverk_project(name = "project", repo = "your/repo", badges = True, hooks = True)
 ```
 
 ```sh
-bazel build //path:fleet_report
-# bazel-bin/path/fleet_report.fleet.json — normalized IR projection
-# bazel-bin/path/fleet_report.fleet.md   — Markdown similarity matrix
+bazel test //:project.ci_gates       # every drift/validation gate (CI + the pre-commit hook)
+bazel run  //:project.hooks_install  # install the pre-commit hook (core.hooksPath)
 ```
 
-The aggregator is a Rust binary (under `translator/aggregator`)
-that parses each member's `.gitlab-ci.yml`, normalizes through
-the `ci-ir` IR, and emits both a machine-readable projection and a
-Markdown report covering: stages × member matrix, cross-project
-`include:` references, jobs in multiple members, variables in
-multiple members, and per-member counts.
+## API reference
 
-## What's coming
+<!-- Generated with Stardoc: http://skydoc.bazel.build -->
 
-| Version | Adds | Why |
-|---|---|---|
-| **0.1.0** | Property tests on `gitlab-parse` round-trip. `ci_yaml_translate` for the trivial direction (parse → re-emit). | Foundation. |
-| **0.2.0** | `github-parse` (`.github/workflows/*.yml` → IR). | Both source formats can be ingested. |
-| **0.3.0** | `gitlab-emit` + `github-emit` — true cross-format translation. | The headline feature. |
-| **0.4.0** | `bazel-emit` — IR jobs become `sh_test` + `genrule` targets via the `starlark` Rust crate's AST. | Bazel as a third translation target. |
-| **0.5.0** | Lean 4 IR formalization + structural correctness theorems (parser totality, round-trip identity, DAG invariant preservation). | Mathematically grounded translations. |
-| **0.6.0+** | Bisimulation theorems under an abstract execution semantics. | Scheduling / dep-ordering proved equivalent. |
+fastverk_project — the generic per-repo convention macro (the fastverk layer).
 
-The full architecture and proof strategy is in
+Composes the project-level wiring a repo needs — CI, README/badges, git hooks,
+versioning — from the underlying rulesets (rules_gitlab, rules_readme), driven by the
+products the `//release:release_artifacts` aspect discovers in the build graph. The upper
+layers wrap this: aion/rules' `aion_framework_library` / `aion_framework_project`, and
+studio's `aion_app(features = [...])`.
+
+Milestone 1: the `.gitlab-ci.yml` generator — emit + schema-validate + drift-gate a thin
+pipeline from a caller-supplied `include:` + CI variables.
+
+Milestone 3 (this revision): `features` + the release-products gate. A *feature* is a
+named bundle of (CI lane include(s), CI variables, expected shippable products). The
+upper layers own the feature CATALOG — studio's `aion_app(features = ["web", "tui"])`
+resolves names → the resolved `features` dict this macro consumes — so the generic layer
+stays catalog-agnostic. When the repo points `products` at its top-level product targets,
+the macro materializes the discovered-products manifest and, against the declared set, a
+declared-vs-discovered DRIFT GATE (`products_drift_test`) — the connection between the
+features a repo turns on and the artifacts it's allowed to ship.
+
+Badges, git hooks, and the versioning workflow land in subsequent milestones.
+
+<a id="fastverk_project"></a>
+
+## fastverk_project
+
+<pre>
+load("@rules_ci//project:defs.bzl", "fastverk_project")
+
+fastverk_project(<a href="#fastverk_project-name">name</a>, <a href="#fastverk_project-repo">repo</a>, <a href="#fastverk_project-ci_include">ci_include</a>, <a href="#fastverk_project-ci_variables">ci_variables</a>, <a href="#fastverk_project-ci_stages">ci_stages</a>, <a href="#fastverk_project-ci_jobs">ci_jobs</a>, <a href="#fastverk_project-ci_extra">ci_extra</a>, <a href="#fastverk_project-features">features</a>,
+                 <a href="#fastverk_project-products">products</a>, <a href="#fastverk_project-expected_products">expected_products</a>, <a href="#fastverk_project-gate_tests">gate_tests</a>, <a href="#fastverk_project-hooks">hooks</a>, <a href="#fastverk_project-hooks_dir">hooks_dir</a>, <a href="#fastverk_project-badges">badges</a>, <a href="#fastverk_project-host">host</a>,
+                 <a href="#fastverk_project-badge_branch">badge_branch</a>, <a href="#fastverk_project-write_to">write_to</a>, <a href="#fastverk_project-validate">validate</a>, <a href="#fastverk_project-visibility">visibility</a>)
+</pre>
+
+Generic project-level wiring: the CI generator + the release-products gate.
+
+Generates `<write_to>` and the drift/validation gates:
+
+    bazel run  //:<name>.ci.update           # (re)generate the pipeline into the tree
+    bazel test //:<name>.ci.update_test      # CI-drift gate (CI + the pre-commit hook)
+    bazel build //:<name>.ci_validate        # schema gate
+
+And, when `products` is set, the release-products seam:
+
+    bazel build //:<name>.products           # the discovered-products JSON manifest
+    bazel test  //:<name>.products_drift_test # declared-vs-discovered drift gate
+
+Plus the unified gate suite (and, with `hooks = True`, the installer):
+
+    bazel test //:<name>.ci_gates            # every drift/validation gate (CI + the hook)
+    bazel run  //:<name>.hooks_install       # install the pre-commit hook (core.hooksPath)
+
+
+**PARAMETERS**
+
+
+| Name  | Description | Default Value |
+| :------------- | :------------- | :------------- |
+| <a id="fastverk_project-name"></a>name |  base name; generates `<name>.ci`, `<name>.ci.update`, `<name>.ci_validate`, and (when `products` is set) `<name>.products` + `<name>.products_drift_test`.   |  `"project"` |
+| <a id="fastverk_project-repo"></a>repo |  OWNER/REPO on the git host (e.g. "aion/db"). Used for the README badges.   |  `None` |
+| <a id="fastverk_project-ci_include"></a>ci_include |  base GitLab `include:` entries (list of dicts) — shared lane(s) to pull in.   |  `[]` |
+| <a id="fastverk_project-ci_variables"></a>ci_variables |  base global CI/CD variables (dict).   |  `{}` |
+| <a id="fastverk_project-ci_stages"></a>ci_stages |  explicit pipeline stages (usually empty — the included lane owns them).   |  `[]` |
+| <a id="fastverk_project-ci_jobs"></a>ci_jobs |  repo-local jobs (usually empty — jobs live in the shared lane).   |  `{}` |
+| <a id="fastverk_project-ci_extra"></a>ci_extra |  escape-hatch raw top-level keys merged into the generated pipeline.   |  `{}` |
+| <a id="fastverk_project-features"></a>features |  resolved feature bundles, `{name: {"include": [...], "variables": {...}, "jobs": {...}, "expects": [{"kind","name"}, ...]}}`. Enabling a feature = its presence here; its `include`/`variables`/`jobs` union onto the base CI, and its `expects` join the declared product set for the drift gate. The upper layers turn `["web", "tui"]` into this dict; the generic layer never hardcodes which features exist. A sibling product ruleset can EXPORT a helper returning such a bundle (e.g. rules_tap's affected-test lane as inline `jobs`) — so fastverk_project composes it WITHOUT a hard dep on that ruleset. Example:<br><br>    load("@rules_tap//ci:defs.bzl", "tap_ci_feature")     fastverk_project(name = "project", repo = "aion/db",                      features = {"tap": tap_ci_feature()})  # adds the affected-test lane   |  `{}` |
+| <a id="fastverk_project-products"></a>products |  top-level product targets (labels) to run the `release_artifacts` aspect over — the inputs to the manifest + drift gate. Empty ⇒ no release-products targets.   |  `[]` |
+| <a id="fastverk_project-expected_products"></a>expected_products |  products the repo declares it ships, as `[{"kind","name"}, ...]` (merged with every enabled feature's `expects`). Drives the drift gate; empty (and no feature expects) ⇒ the manifest is still emitted but no gate is generated.   |  `[]` |
+| <a id="fastverk_project-gate_tests"></a>gate_tests |  EXTRA gate test labels to fold into `<name>.ci_gates` (e.g. the repo's `:readme.write_test`, a lockfile drift test, a manifest `objects.json` gate). The macro's own gates (`.ci.update_test`, `.products_drift_test`) are added automatically.   |  `[]` |
+| <a id="fastverk_project-hooks"></a>hooks |  also generate `<name>.hooks_install` — `bazel run` it to install a pre-commit hook that runs `<name>.ci_gates` (hard block, no auto-fix) + sets `core.hooksPath`. Local/CI parity: the hook runs the SAME suite as CI. Default off.   |  `False` |
+| <a id="fastverk_project-hooks_dir"></a>hooks_dir |  working-tree dir the pre-commit hook is installed into (default ".githooks").   |  `".githooks"` |
+| <a id="fastverk_project-badges"></a>badges |  emit a `<name>.badges` rules_readme `markdown_fragment` (slot "badges") with the GitLab-native pipeline + coverage badges for `repo`. The repo's README template composes it: `<!-- FRAGMENTS:badges -->` + `readme(fragments=[":<name>.badges"])`. Requires `repo`. Default off (opt-in until a repo wires the slot).   |  `False` |
+| <a id="fastverk_project-host"></a>host |  the git host for the badge URLs (default "gitlab.savvifi.com").   |  `"gitlab.savvifi.com"` |
+| <a id="fastverk_project-badge_branch"></a>badge_branch |  the branch the badges reflect (default "main").   |  `"main"` |
+| <a id="fastverk_project-write_to"></a>write_to |  source-relative output path (default `.gitlab-ci.yml`).   |  `".gitlab-ci.yml"` |
+| <a id="fastverk_project-validate"></a>validate |  schema-validate the generated file (default True).   |  `True` |
+| <a id="fastverk_project-visibility"></a>visibility |  target visibility for the generated targets.   |  `None` |
+
+<!-- Generated with Stardoc: http://skydoc.bazel.build -->
+
+release_artifacts — make the build graph's "versioned products" first-class.
+
+A `ReleaseArtifactInfo` is the normalized, cross-kind view of a shippable product (an npm
+package, an OCI image, a helm chart, a static site, an aion module bundle). The
+`release_artifacts` aspect SYNTHESIZES it from the producing rules rather than requiring
+producers to hand-emit it — so any existing `npm_package` / `oci_image` / … is
+discoverable as a product automatically.
+
+`fastverk_project` consumes the aspect to derive a repo's products → which CI lanes to
+include and what the versioning workflow operates on. `kind` is thus DERIVED from what a
+repo produces, not declared.
+
+Detection keys off `ctx.rule.kind` — a stable signal that avoids depending on
+aspect_rules_js/ts internal provider symbols (whose fields shift across versions). The
+public-surface extraction for versioning (npm → the `.d.ts` via rules_ts `DeclarationInfo`;
+the package name/version via the package.json) is pinned when the aspect is first run
+against a real package — see the M3 TODOs below.
+
+<a id="products_drift_test"></a>
+
+## products_drift_test
+
+<pre>
+load("@rules_ci//release:defs.bzl", "products_drift_test")
+
+products_drift_test(<a href="#products_drift_test-name">name</a>, <a href="#products_drift_test-deps">deps</a>, <a href="#products_drift_test-expected">expected</a>)
+</pre>
+
+Fail if the products discovered under `deps` differ from the declared `expected` set.
+
+**ATTRIBUTES**
+
+
+| Name  | Description | Type | Mandatory | Default |
+| :------------- | :------------- | :------------- | :------------- | :------------- |
+| <a id="products_drift_test-name"></a>name |  A unique name for this target.   | <a href="https://bazel.build/concepts/labels#target-names">Name</a> | required |  |
+| <a id="products_drift_test-deps"></a>deps |  Top-level targets whose discovered products are checked against `expected`.   | <a href="https://bazel.build/concepts/labels">List of labels</a> | optional |  `[]`  |
+| <a id="products_drift_test-expected"></a>expected |  Declared products as normalized "kind:name" entries (e.g. "npm:@aion/foo").   | List of strings | optional |  `[]`  |
+
+
+<a id="release_manifest"></a>
+
+## release_manifest
+
+<pre>
+load("@rules_ci//release:defs.bzl", "release_manifest")
+
+release_manifest(<a href="#release_manifest-name">name</a>, <a href="#release_manifest-deps">deps</a>)
+</pre>
+
+Emit the fastverk.release.v1.ReleaseManifest (proto3-JSON) of every product under `deps`.
+
+**ATTRIBUTES**
+
+
+| Name  | Description | Type | Mandatory | Default |
+| :------------- | :------------- | :------------- | :------------- | :------------- |
+| <a id="release_manifest-name"></a>name |  A unique name for this target.   | <a href="https://bazel.build/concepts/labels#target-names">Name</a> | required |  |
+| <a id="release_manifest-deps"></a>deps |  Top-level targets to discover products under.   | <a href="https://bazel.build/concepts/labels">List of labels</a> | optional |  `[]`  |
+
+
+<a id="ReleaseArtifactInfo"></a>
+
+## ReleaseArtifactInfo
+
+<pre>
+load("@rules_ci//release:defs.bzl", "ReleaseArtifactInfo")
+
+ReleaseArtifactInfo(<a href="#ReleaseArtifactInfo-kind">kind</a>, <a href="#ReleaseArtifactInfo-name">name</a>, <a href="#ReleaseArtifactInfo-label">label</a>, <a href="#ReleaseArtifactInfo-version_source">version_source</a>, <a href="#ReleaseArtifactInfo-surface">surface</a>)
+</pre>
+
+Normalized view of one shippable, versioned product discovered in the graph.
+
+**FIELDS**
+
+| Name  | Description |
+| :------------- | :------------- |
+| <a id="ReleaseArtifactInfo-kind"></a>kind |  Product kind: npm \| oci \| helm \| site \| module_bundle.    |
+| <a id="ReleaseArtifactInfo-name"></a>name |  The product's published name (npm package name, image repo, chart name).    |
+| <a id="ReleaseArtifactInfo-label"></a>label |  The Bazel label that produces it (string).    |
+| <a id="ReleaseArtifactInfo-version_source"></a>version_source |  Where the version is read (e.g. the package.json File), or None.    |
+| <a id="ReleaseArtifactInfo-surface"></a>surface |  Tuple of Files describing the public surface for versioning (npm: the .d.ts* closure); () if none.    |
+
+
+<a id="ReleaseArtifactsInfo"></a>
+
+## ReleaseArtifactsInfo
+
+<pre>
+load("@rules_ci//release:defs.bzl", "ReleaseArtifactsInfo")
+
+ReleaseArtifactsInfo(<a href="#ReleaseArtifactsInfo-products">products</a>)
+</pre>
+
+Aggregate of every ReleaseArtifactInfo reachable from a target.
+
+**FIELDS**
+
+| Name  | Description |
+| :------------- | :------------- |
+| <a id="ReleaseArtifactsInfo-products"></a>products |  depset of ReleaseArtifactInfo.    |
+
+
+<a id="release_artifacts"></a>
+
+## release_artifacts
+
+<pre>
+load("@rules_ci//release:defs.bzl", "release_artifacts")
+
+release_artifacts()
+</pre>
+
+Walk a target's graph and collect its shippable products as ReleaseArtifactInfo.
+
+**ASPECT ATTRIBUTES**
+
+
+| Name | Type |
+| :------------- | :------------- |
+| deps| String |
+| srcs| String |
+| data| String |
+
+
+**ATTRIBUTES**
+
+<!-- Generated with Stardoc: http://skydoc.bazel.build -->
+
+git_hooks — install a pre-commit hook that runs the SAME gates as CI.
+
+The local/CI parity rule: a developer's pre-commit runs exactly the `ci_gates` test_suite
+that CI runs — so a commit that would fail the pipeline's drift/validation gates (stale
+generated `.gitlab-ci.yml`, README, products manifest, lockfiles, …) is blocked locally
+FIRST. Hard block, NO auto-fix: the dev runs the named `.update`/`.write` target and
+re-commits. `fastverk_project(hooks = True)` wires this over the gate suite it assembles.
+
+`bazel run //<pkg>:<name>` installs: it writes `<hooks_dir>/pre-commit` into the working
+tree and points git at it via `core.hooksPath`. The devcontainer/bootstrap calls it once.
+
+Implemented as a tiny executable rule (not sh_binary) so consumers don't need rules_shell,
+and the install script EMBEDS the hook inline (heredoc) so there are no runfiles to resolve.
+
+<a id="git_hooks"></a>
+
+## git_hooks
+
+<pre>
+load("@rules_ci//hooks:defs.bzl", "git_hooks")
+
+git_hooks(<a href="#git_hooks-name">name</a>, <a href="#git_hooks-gates">gates</a>, <a href="#git_hooks-hooks_dir">hooks_dir</a>)
+</pre>
+
+`bazel run` installs a pre-commit hook (runs `gates`, hard-block) + sets core.hooksPath.
+
+**ATTRIBUTES**
+
+
+| Name  | Description | Type | Mandatory | Default |
+| :------------- | :------------- | :------------- | :------------- | :------------- |
+| <a id="git_hooks-name"></a>name |  A unique name for this target.   | <a href="https://bazel.build/concepts/labels#target-names">Name</a> | required |  |
+| <a id="git_hooks-gates"></a>gates |  The bazel test target the hook runs (the `ci_gates` suite label, as text).   | String | required |  |
+| <a id="git_hooks-hooks_dir"></a>hooks_dir |  Working-tree dir for the hook; core.hooksPath is pointed here.   | String | optional |  `".githooks"`  |
+
+## Versioning + the Rust translator
+
+Automated, surface-driven versioning (proto DTOs in `proto/fastverk/release/v1/`, the `version/`
+tools, the escalation seam) is documented in [`docs/VERSIONING.md`](docs/VERSIONING.md). The Rust
+CI-IR translator (`//translator`, dev-scoped) and its proof strategy are in
 [`docs/DESIGN.md`](docs/DESIGN.md).
-
-## Layout
-
-```
-docs/DESIGN.md           # architecture + proof strategy
-schemas/extensions.bzl   # sha-pinned upstream JSON Schemas (gitlab + github)
-ir/                      # Lean 4 IR (placeholder; lands v0.5.0)
-translator/              # Cargo workspace
-  ci-ir/                   # IR types + invariants
-  gitlab-parse/            # .gitlab-ci.yml → IR
-  aggregator/              # Rust ci_aggregator binary
-  # github-parse, gitlab-emit, github-emit, bazel-emit per roadmap
-rules/defs.bzl           # Bazel rules: ci_yaml_aggregate (live),
-                         # ci_yaml_translate, ci_yaml_diff (stubs)
-```
-
-## Provenance + alternatives
-
-The IR + verifier-side proofs approach is closer in spirit to
-[Verus](https://github.com/verus-lang/verus) and
-[Creusot](https://github.com/creusot-rs/creusot) than to
-[Earthly](https://earthly.dev/) or [Dagger](https://dagger.io/),
-which solve the same "portable CI" problem at runtime via their
-own DSLs. Earthly/Dagger are great for green-field projects.
-This repo targets the boring-but-real case: an org with 5–50
-existing GitLab pipelines needs to migrate to GitHub Actions
-without losing semantic fidelity. The Lean proofs are the
-distinguishing claim — when the translator says "no diagnostics,"
-it really preserves the structural invariants.

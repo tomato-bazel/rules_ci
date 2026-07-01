@@ -1,0 +1,52 @@
+# rules_ci
+
+The fastverk **CI / release / versioning** foundation: generate a repo's CI pipeline by
+convention, make its shippable **products** first-class in the build graph, **drift-gate** its
+generated files, drive **automated versioning** from the public surface — plus a Rust **CI-IR
+translator** (GitLab ↔ GitHub ↔ Bazel, mediated by a neutral IR).
+
+> **This README is GENERATED — do not edit it directly.** The API reference below is rendered
+> from the `.bzl` docstrings by **stardoc**; the whole file is composed by **rules_readme** and
+> drift-gated by `//:readme.write_test` (run in CI + the pre-commit hook). To change it, edit the
+> `.bzl` docstrings or `README.md.tmpl`, then run `bazel run //:readme.write`.
+
+<!-- TOC -->
+
+## The three-layer spine
+
+`fastverk_project` (this module) ← `aion_framework_library` (aion/rules) ← `aion_app` (studio).
+A repo calls the one macro for its layer; it composes the CI pipeline (rules_gitlab `gitlab_ci`),
+the README badges (rules_readme), the `release_artifacts` products aspect, the `git_hooks`
+pre-commit installer, and the `version/` tooling — all from convention.
+
+## Quick start
+
+```python
+# MODULE.bazel
+bazel_dep(name = "rules_ci", version = "0.0.1")
+```
+
+```python
+# BUILD.bazel — generate + drift-gate this repo's .gitlab-ci.yml, README badges, and hooks
+load("@rules_ci//project:defs.bzl", "fastverk_project")
+
+fastverk_project(name = "project", repo = "your/repo", badges = True, hooks = True)
+```
+
+```sh
+bazel test //:project.ci_gates       # every drift/validation gate (CI + the pre-commit hook)
+bazel run  //:project.hooks_install  # install the pre-commit hook (core.hooksPath)
+```
+
+## API reference
+
+<!-- FRAGMENTS:api -->
+
+## Versioning + the Rust translator
+
+Automated, surface-driven versioning (proto DTOs in `proto/fastverk/release/v1/`, the `version/`
+tools, the escalation seam) is documented in [`docs/VERSIONING.md`](docs/VERSIONING.md). The Rust
+CI-IR translator (`//translator`, dev-scoped) and its proof strategy are in
+[`docs/DESIGN.md`](docs/DESIGN.md).
+
+<!-- FRAGMENTS -->

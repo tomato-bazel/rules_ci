@@ -1,0 +1,95 @@
+// fastverk.release.v1 — the canonical DTOs for the release/versioning pipeline.
+//
+// These cross the build-graph → versioning-tool → tag boundary, so per the "DTOs are protos"
+// rule they ARE protos (schema of record), not ad-hoc JSON. Compiled HERMETICALLY by bazel
+// (//proto:release_proto via rules_proto's hermetic protoc); the Node version/ tools load the
+// bazel-emitted descriptor set (protobufjs) and serialize to proto wire — single source of
+// truth, cross-language (a future Lean emit-boundary surface extractor consumes the same types).
+syntax = "proto3";
+
+package fastverk.release.v1;
+
+// ── Public surface (version/surface.mjs) ─────────────────────────────────────
+// One exported declaration of a package's public API, normalized (comments/whitespace
+// stripped) so cosmetic edits aren't surface changes.
+message TsExport {
+  string name = 1;
+  string kind = 2;       // interface | class | type | enum | function | const | namespace | other
+  string signature = 3;  // normalized declaration text — the diff unit
+}
+
+// The public surface of one npm product (its .d.ts* closure). Future: a Lean arm is added as a
+// new field when that emit-boundary extractor lands (proto3 forward-compat).
+message Surface {
+  string surface_hash = 1;
+  string entry = 2;
+  repeated TsExport exports = 3;
+}
+
+// ── Products (release_artifacts aspect → release_manifest) ───────────────────
+message Product {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    NPM = 1;
+    OCI = 2;
+    HELM = 3;
+    SITE = 4;
+    MODULE_BUNDLE = 5;
+    BINARY = 6;  // reserved: a prebuilt-binary / github-release product (e.g. tap CLI) — see VERSIONING.md
+  }
+  Kind kind = 1;
+  string name = 2;
+  string label = 3;
+  string version_source = 4;
+  // The product's public-surface INPUTS the bazel aspect knows: its .d.ts* file paths.
+  // The extracted `Surface` message (exports + hash) is produced downstream by version/surface.mjs
+  // FROM these paths — the bazel build graph doesn't parse types.
+  repeated string surface_paths = 5;
+}
+
+message ReleaseManifest {
+  repeated Product products = 1;
+}
+
+// ── Diff + version decision (version/diff.mjs, version/version.mjs) ──────────
+enum Bump {
+  BUMP_UNSPECIFIED = 0;
+  NONE = 1;
+  PATCH = 2;
+  MINOR = 3;
+  MAJOR = 4;
+}
+
+message SurfaceChange {
+  enum Op {
+    OP_UNSPECIFIED = 0;
+    ADDED = 1;
+    REMOVED = 2;
+    CHANGED = 3;
+  }
+  Op op = 1;
+  string symbol = 2;   // "<kind> <name>"
+  Bump implies = 3;    // for add/remove: the forced bump
+  bool ambiguous = 4;  // a CHANGED shape of an existing export → routed to escalation
+  string before = 5;   // CHANGED only
+  string after = 6;
+}
+
+message SurfaceDiff {
+  string from_hash = 1;
+  string to_hash = 2;
+  Bump bump = 3;        // deterministic floor (add/remove); raised by escalation when escalate
+  repeated SurfaceChange changes = 4;
+  bool escalate = 5;
+}
+
+message VersionDecision {
+  string product = 1;
+  string from_version = 2;
+  string to_version = 3;
+  Bump bump = 4;
+  bool escalated = 5;
+  string tag = 6;
+  repeated SurfaceChange changes = 7;
+  string rationale = 8;
+}

@@ -1,4 +1,4 @@
-# rules_ci_ir — design
+# rules_ci — design
 
 A neutral intermediate representation (IR) for CI pipeline
 configuration, with proved-correct translations between
@@ -219,7 +219,7 @@ User-facing Bazel rules in [`rules/defs.bzl`](../rules/defs.bzl):
 | `ci_yaml_diff(name, a, b)` | roadmap | Structural diff of two CI YAMLs at the IR level — catches reordering-only changes vs. real diffs. |
 
 These are stubs that exec the relevant Rust binary from
-`@rules_ci_ir_crates`. Once the crates are populated, the stubs
+`@rules_ci_crates`. Once the crates are populated, the stubs
 become real.
 
 ## Bazel-emit
@@ -250,7 +250,7 @@ Concrete shape:
 ```python
 # Emitted: //path:bazel_pipeline.bzl
 load(
-    "@rules_ci_ir//rules/runtime:defs.bzl",
+    "@rules_ci//rules/runtime:defs.bzl",
     "ci_job",
 )
 
@@ -269,7 +269,7 @@ def my_pipeline():
     )
 ```
 
-`ci_job` is a thin macro provided by rules_ci_ir's runtime that
+`ci_job` is a thin macro provided by rules_ci's runtime that
 expands to a `sh_test` or `genrule` depending on artifacts.
 
 ## Roadmap by version

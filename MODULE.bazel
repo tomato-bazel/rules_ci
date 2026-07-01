@@ -8,48 +8,71 @@
 # surface. The Lean 4 IR + correctness theorems are placeholders;
 # see [`docs/DESIGN.md`](docs/DESIGN.md) for the proof strategy.
 module(
-    name = "rules_ci_ir",
+    name = "rules_ci",
     version = "0.0.1",
 )
 
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
-bazel_dep(name = "rules_rust", version = "0.70.0")
 
-# Pin gitlab-ci.json + github-workflow.json from their canonical
-# upstream sources. Refresh procedure in docs/DESIGN.md.
-ci_schemas = use_extension("//schemas:extensions.bzl", "ci_schemas")
-use_repo(
-    ci_schemas,
-    "gitlab_ci_schema",
-    "github_workflow_schema",
-)
+# ─── fastverk_project CI-generation layer (//project, //release) ──────────────
+# rules_gitlab `gitlab_ci` emits + schema-validates + drift-gates a repo's
+# `.gitlab-ci.yml`; rules_readme composes the README + badges. 0.3.2 ships the
+# `gitlab_ci` generator. rules_gitlab bundles its own check-jsonschema but its
+# python toolchain is dev-only, so this ruleset (the fastverk layer) registers
+# one for the emit/validate py_binaries — and aion/rules et al. inherit it
+# transitively (this is the right home for the CI-gen python dep, not aion/rules).
+# 0.3.2 today; BUMP to 0.3.3 (the validate 3.12-pin / rpds fix) when rules_gitlab 0.3.3 is
+# published. rules_ci-as-root doesn't need the fix (its own python default is 3.12); consumers
+# get it once this bump + the 0.3.3 publish land. (aion-rules tests it now via a local override.)
+bazel_dep(name = "rules_gitlab", version = "0.3.2")
+bazel_dep(name = "rules_readme", version = "0.0.3")
+bazel_dep(name = "rules_python", version = "1.7.0")
 
-# Rust toolchain for the translator binaries. Cargo-style workspace
-# under //translator/.
-rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
-rust.toolchain(
-    edition = "2021",
-    versions = ["1.95.0"],
-)
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(python_version = "3.12", is_default = True)
+
+# ─── Release/versioning DTOs (//proto) ────────────────────────────────────────
+# The canonical fastverk.release.v1 proto (surface/diff/version-decision). protoc is
+# HERMETIC via rules_proto's toolchain (never the system protoc). Versions match the
+# ecosystem (tap / polyglot / control-plane): rules_proto 7.1.0 + protobuf 33.4.
+#
+# dev_dependency: //proto is rules_ci-INTERNAL — the macros (fastverk_project/release_artifacts)
+# don't reference it, and the Node version/ tools consume the BUILT descriptor set (baked into
+# the CI image), not the module. So consumers of fastverk_project must NOT inherit rules_proto +
+# protobuf. Active when rules_ci is the root module (its own build/CI), skipped for consumers.
+bazel_dep(name = "rules_proto", version = "7.1.0", dev_dependency = True)
+bazel_dep(name = "protobuf", version = "33.4", dev_dependency = True)
+
+# ─── Rust CI-IR translator (//translator) — DEV-SCOPED ────────────────────────
+# The translator is ORTHOGONAL to the consumer-facing CI-gen layer (//project, //release,
+# //hooks) — those macros never touch the rust crates. So the entire rust toolchain stack
+# (rules_rust + the toolchain registration + crate_universe + the //schemas fetch) is
+# dev_dependency: active only when rules_ci is the ROOT module (building //translator in its
+# own CI), and SKIPPED for consumers of fastverk_project — they inherit no rust/crate deps.
+# Each crate dir (translator/{ci-ir,gitlab-parse,aggregator}) has its own BUILD.bazel so the
+# crate_universe `from_cargo` manifest label resolves.
+bazel_dep(name = "rules_rust", version = "0.70.0", dev_dependency = True)
+
+ci_schemas = use_extension("//schemas:extensions.bzl", "ci_schemas", dev_dependency = True)
+use_repo(ci_schemas, "gitlab_ci_schema", "github_workflow_schema")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust", dev_dependency = True)
+rust.toolchain(edition = "2021", versions = ["1.95.0"])
 use_repo(rust, "rust_toolchains")
-register_toolchains("@rust_toolchains//:all")
 
-crate = use_extension(
-    "@rules_rust//crate_universe:extensions.bzl",
-    "crate",
-)
+register_toolchains("@rust_toolchains//:all", dev_dependency = True)
+
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate", dev_dependency = True)
 crate.from_cargo(
-    name = "rules_ci_ir_crates",
+    name = "rules_ci_crates",
     cargo_lockfile = "//translator:Cargo.lock",
-    manifests = [
-        "//translator:Cargo.toml",
-        "//translator/ci-ir:Cargo.toml",
-        "//translator/gitlab-parse:Cargo.toml",
-        "//translator/aggregator:Cargo.toml",
-    ],
+    # Only the workspace ROOT manifest is needed — crate_universe discovers the members
+    # (ci-ir, gitlab-parse, aggregator) from it. Each member's own BUILD.bazel still defines
+    # its rust target + exports its Cargo.toml.
+    manifests = ["//translator:Cargo.toml"],
 )
-use_repo(crate, "rules_ci_ir_crates")
+use_repo(crate, "rules_ci_crates")
 
 # Dev-only.
 bazel_dep(name = "rules_shell", version = "0.6.1", dev_dependency = True)
