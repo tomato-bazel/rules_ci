@@ -23,7 +23,7 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # Publish kinds the runtime + the build-runner both understand. Keep in sync with the
 # build-runner's `Build.publish[].kind` dispatcher (owned by opus-deploy).
-PUBLISH_KINDS = ["static_cdn", "site", "oci", "github_release"]
+PUBLISH_KINDS = ["static_cdn", "site", "oci", "github_release", "npm"]
 
 def ci_job(
         name,
@@ -111,11 +111,15 @@ def ci_publish(
 
     Args:
       name: job (and target) name.
-      artifact: label of the single built file to publish (e.g. an olean tarball, a site tarball).
+      artifact: label of the single built file to publish (e.g. an olean tarball, a site tarball,
+        an `npm pack` tarball).
       kind: one of `PUBLISH_KINDS` — `static_cdn` (immutable content-addressed upload under
         `destination`), `site` (extract + sync to `destination`), `oci` (push to the `destination`
-        registry ref), or `github_release` (upload to `repo`'s release for `tag`).
-      destination: `s3://…` prefix / CDN origin / registry ref (for static_cdn|site|oci).
+        registry ref), `github_release` (upload to `repo`'s release for `tag`), or `npm` (publish
+        an npm tarball to the `destination` registry).
+      destination: `s3://…` prefix / CDN origin / registry ref (static_cdn|site|oci) or the npm
+        registry URL (npm), e.g.
+        `https://gitlab.example.com/api/v4/projects/<id>/packages/npm/`.
       stage: pipeline stage label, carried as a tag.
       needs: predecessor job labels (recorded in the manifest entry).
       repo: `owner/name` GitHub repo (github_release only).

@@ -20,5 +20,15 @@ ci_pipeline(
             destination = "s3://example/demo/",
             kind = "static_cdn",
         ),
+        # `npm` kind: `artifact` is an `npm pack`-layout tarball and `destination`
+        # is the registry URL. Not a real tarball here — this only pins that the
+        # kind resolves and lands in `demo.pipeline.json`; the runner's own
+        # dry-run keeps `bazel run` harmless without credentials.
+        ci_publish(
+            name = "pub_npm",
+            artifact = ":unit.sh",
+            destination = "https://registry.example.com/api/v4/projects/1/packages/npm/",
+            kind = "npm",
+        ),
     ],
 )

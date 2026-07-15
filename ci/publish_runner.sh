@@ -79,6 +79,42 @@ case "$KIND" in
       log "DRY-RUN (no gh): would upload $ART -> $REPO release $TAG (asset ${ASSET:-$(basename "$ART")})"
     fi
     ;;
+  npm)
+    # ARTIFACT is an npm tarball (`npm pack` layout: a `package/` root). DEST is the
+    # registry URL. Auth comes from the runner env, first match wins: NPM_TOKEN,
+    # GITLAB_NPM_TOKEN, CI_JOB_TOKEN, GITLAB_TOKEN.
+    #
+    # IDEMPOTENT: a published version is immutable, so re-running a pipeline on an
+    # unbumped commit must be a no-op, not a hard failure. Skip when the exact
+    # name@version already exists (the `publish.mjs` convention this replaces).
+    npm_token="${NPM_TOKEN:-${GITLAB_NPM_TOKEN:-${CI_JOB_TOKEN:-${GITLAB_TOKEN:-}}}}"
+    if have npm && [[ -n "$npm_token" ]]; then
+      # `node` ships with `npm`, so parsing package.json needs no extra dependency.
+      pkg_json="$(tar -xzOf "$ART" package/package.json)"
+      pkg_name="$(printf '%s' "$pkg_json" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).name')"
+      pkg_ver="$(printf '%s' "$pkg_json" | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).version')"
+
+      # npm matches auth by registry URI prefix, sans scheme.
+      reg_prefix="${DEST#https://}"; reg_prefix="${reg_prefix#http://}"
+      npmrc="$(mktemp)"
+      trap 'rm -f "$npmrc"' EXIT
+      {
+        printf '//%s:_authToken=%s\n' "${reg_prefix%/}/" "$npm_token"
+        printf 'always-auth=true\n'
+      } > "$npmrc"
+      export NPM_CONFIG_USERCONFIG="$npmrc"
+
+      if npm view "${pkg_name}@${pkg_ver}" version --registry="$DEST" >/dev/null 2>&1; then
+        log "skip    ${pkg_name}@${pkg_ver} (already published to $DEST)"
+      else
+        log "publish ${pkg_name}@${pkg_ver} -> $DEST"
+        npm publish "$ART" --registry="$DEST"
+      fi
+    else
+      reason="no npm"; [[ -n "${npm_token:-}" ]] || reason="no token"
+      log "DRY-RUN ($reason): would publish $ART -> ${DEST:-<registry>}"
+    fi
+    ;;
   *)
     echo "publish_runner: unknown kind '$KIND'" >&2; exit 2 ;;
 esac

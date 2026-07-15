@@ -4,6 +4,34 @@ All notable changes to rules_ci. The format is loosely
 [Keep a Changelog](https://keepachangelog.com/) — version headers
 mirror the published bazel-registry entries.
 
+## 0.2.0 — `ci_publish(kind = "npm")`
+
+Adds `npm` to `PUBLISH_KINDS`, so a repo that publishes an npm package can go
+yaml-free. Until now `ci_publish` covered `static_cdn` | `site` | `oci` |
+`github_release`, which meant any repo whose deliverable is an npm package had to
+keep a `.gitlab-ci.yml` purely to run `npm publish` — the exact thing `//ci`
+exists to delete. First consumer: aion/sql, whose `@aion/db-migrations-sql`
+(the aion golden-schema `migrations.zip`, consumed by studio/web) lost its only
+publish lane when the repo went fastverk-only.
+
+- `ci_publish(name, artifact = <npm tarball>, kind = "npm", destination = <registry url>)`.
+  `artifact` is an `npm pack`-layout tarball (a `package/` root); `destination`
+  is the registry URL, e.g.
+  `https://gitlab.example.com/api/v4/projects/<id>/packages/npm/`.
+- Auth from the runner env, first match wins: `NPM_TOKEN`, `GITLAB_NPM_TOKEN`,
+  `CI_JOB_TOKEN`, `GITLAB_TOKEN`. A temporary `NPM_CONFIG_USERCONFIG` carries the
+  `_authToken` line keyed by the registry's scheme-less URI prefix (how npm
+  matches auth).
+- **Idempotent**: a published version is immutable, so the runner skips when the
+  exact `name@version` already exists rather than failing — re-running a pipeline
+  on an unbumped commit is a no-op. This preserves the `publish.mjs` convention
+  the GitLab jobs used. `name`/`version` are read out of the tarball's
+  `package/package.json` with `node` (which ships with `npm`, so no new dep).
+- No credentials, or `FASTVERK_PUBLISH_DRYRUN=1` → logs the intended publish and
+  exits 0, like every other kind.
+
+No IR/proto change: `pipeline.json` already carries `kind` as an opaque string.
+
 ## 0.1.0 — the yaml-free CI runtime (`//ci`)
 
 Adds `@rules_ci//ci:defs.bzl` — the vendor-neutral runtime a repo expresses its
