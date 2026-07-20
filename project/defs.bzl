@@ -9,6 +9,13 @@ studio's `aion_app(features = [...])`.
 Milestone 1: the `.gitlab-ci.yml` generator — emit + schema-validate + drift-gate a thin
 pipeline from a caller-supplied `include:` + CI variables.
 
+Milestone 4 (this revision): `ci =` selects the CI BACKEND, so the pipeline file stops
+being mandatory. The macro previously called `gitlab_ci()` unconditionally, which put it
+in direct contradiction with readiness criterion C2 (`ci-as-rules` requires the
+forge-native CI file to be ABSENT) — C2 was unsatisfiable for every repo using this macro.
+`ci = "native"` composes `//ci`'s `ci_job`/`ci_publish` targets instead and writes no such
+file; `ci = "none"` wires no CI at all.
+
 Milestone 3 (this revision): `features` + the release-products gate. A *feature* is a
 named bundle of (CI lane include(s), CI variables, expected shippable products). The
 upper layers own the feature CATALOG — studio's `aion_app(features = ["web", "tui"])`
@@ -23,8 +30,27 @@ Badges, git hooks, and the versioning workflow land in subsequent milestones.
 
 load("@rules_gitlab//gitlab:defs.bzl", "gitlab_ci")
 load("@rules_readme//readme:defs.bzl", "markdown_fragment")
+load("//ci:defs.bzl", "ci_pipeline")
 load("//hooks:defs.bzl", "git_hooks")
 load("//release:defs.bzl", "products_drift_test", "release_manifest")
+
+# The CI backends `fastverk_project(ci = ...)` accepts.
+#
+#   "gitlab" — generate a `.gitlab-ci.yml` via rules_gitlab. The historical
+#              behavior and still the default, so existing callers are unchanged.
+#   "native" — express CI as `ci_*` Bazel targets (//ci:defs.bzl). No
+#              forge-native file is written, so readiness criterion C2
+#              ("ci-as-rules": no `.gitlab-ci.yml` / no `.github/workflows`) is
+#              SATISFIABLE. `bazel test //:<name>.ci` is the gate; the
+#              build-runner replays the publish jobs from the manifest.
+#   "none"   — no CI wiring at all. For a repo whose builds are driven entirely
+#              off the BuildRun rail and that ships nothing itself.
+#
+# Until "native" existed here, C2 was unsatisfiable for any repo using this
+# macro: the criterion requires the forge-native file to be ABSENT while the
+# macro unconditionally emitted one. That contradiction is the whole reason for
+# this parameter.
+CI_BACKENDS = ["gitlab", "native", "none"]
 
 # GitLab serves NATIVE status badges per project — no shields.io / codecov needed. The
 # coverage badge reads the value GitLab scraped from the job's `coverage:` regex (the M2
@@ -44,6 +70,8 @@ def fastverk_project(
         ci_stages = [],
         ci_jobs = {},
         ci_extra = {},
+        ci = "gitlab",
+        ci_jobs_native = [],
         features = {},
         products = [],
         expected_products = [],
@@ -56,13 +84,20 @@ def fastverk_project(
         write_to = ".gitlab-ci.yml",
         validate = True,
         visibility = None):
-    """Generic project-level wiring: the CI generator + the release-products gate.
+    """Generic project-level wiring: the CI backend + the release-products gate.
 
-    Generates `<write_to>` and the drift/validation gates:
+    With `ci = "gitlab"` (the default), generates `<write_to>` and its gates:
 
         bazel run  //:<name>.ci.update           # (re)generate the pipeline into the tree
         bazel test //:<name>.ci.update_test      # CI-drift gate (CI + the pre-commit hook)
         bazel build //:<name>.ci_validate        # schema gate
+
+    With `ci = "native"`, no forge-native file is written — CI is Bazel targets:
+
+        bazel test //:<name>.ci                  # the test gate (a test_suite)
+        # <name>.ci.pipeline.json                # publish jobs, read by the build-runner
+
+    With `ci = "none"`, neither.
 
     And, when `products` is set, the release-products seam:
 
@@ -78,11 +113,32 @@ def fastverk_project(
       name: base name; generates `<name>.ci`, `<name>.ci.update`, `<name>.ci_validate`,
         and (when `products` is set) `<name>.products` + `<name>.products_drift_test`.
       repo: OWNER/REPO on the git host (e.g. "aion/db"). Used for the README badges.
+      ci: which CI backend to generate — one of `CI_BACKENDS`:
+
+        * `"gitlab"` (default) — a generated `.gitlab-ci.yml`. Unchanged behavior.
+        * `"native"` — CI as `ci_job`/`ci_publish` Bazel targets, NO forge-native
+          file. This is what makes readiness criterion C2 (`ci-as-rules`, which
+          requires `.gitlab-ci.yml` to be absent) satisfiable — it was previously
+          unreachable for any repo using this macro, because the macro always
+          emitted the very file C2 forbids. `bazel test //:<name>.ci` is the gate.
+        * `"none"` — no CI wiring, for a repo built entirely off the BuildRun rail.
+
+        The GitLab-shaped args (`ci_include`, `ci_variables`, `ci_stages`,
+        `ci_jobs`, `ci_extra`) configure a generated pipeline FILE; passing them
+        with a non-gitlab backend is an error rather than a silent no-op, so a
+        repo flipping to `"native"` cannot quietly drop its lanes.
+      ci_jobs_native: `ci_job()` / `ci_publish()` results composed into the
+        pipeline when `ci = "native"`. Test jobs become the `<name>.ci` test_suite;
+        publish jobs land in `<name>.ci.pipeline.json` for the build-runner.
       ci_include: base GitLab `include:` entries (list of dicts) — shared lane(s) to pull in.
-      ci_variables: base global CI/CD variables (dict).
+        `ci = "gitlab"` only.
+      ci_variables: base global CI/CD variables (dict). `ci = "gitlab"` only.
       ci_stages: explicit pipeline stages (usually empty — the included lane owns them).
+        `ci = "gitlab"` only.
       ci_jobs: repo-local jobs (usually empty — jobs live in the shared lane).
+        `ci = "gitlab"` only.
       ci_extra: escape-hatch raw top-level keys merged into the generated pipeline.
+        `ci = "gitlab"` only.
       features: resolved feature bundles, `{name: {"include": [...], "variables": {...},
         "jobs": {...}, "expects": [{"kind","name"}, ...]}}`. Enabling a feature = its
         presence here; its `include`/`variables`/`jobs` union onto the base CI, and its
@@ -136,21 +192,63 @@ def fastverk_project(
         for exp in spec.get("expects", []):
             declared.append(exp)
 
-    gitlab_ci(
-        name = name + ".ci",
-        include = include if include else None,
-        variables = variables,
-        stages = ci_stages,
-        jobs = jobs,
-        extra = ci_extra,
-        write_to = write_to,
-        validate = validate,
-        visibility = visibility,
-    )
+    if ci not in CI_BACKENDS:
+        fail("fastverk_project(ci = {}) — must be one of {}".format(repr(ci), CI_BACKENDS))
+
+    # `gates` starts EMPTY and each backend contributes its own. It used to be
+    # seeded with `.ci.update_test` under the comment "always generated", which
+    # only held while gitlab_ci was unconditional — with a backend that emits no
+    # pipeline, that label does not exist and the test_suite below would fail to
+    # analyze with a dangling reference.
+    gates = []
+
+    if ci == "gitlab":
+        gitlab_ci(
+            name = name + ".ci",
+            include = include if include else None,
+            variables = variables,
+            stages = ci_stages,
+            jobs = jobs,
+            extra = ci_extra,
+            write_to = write_to,
+            validate = validate,
+            visibility = visibility,
+        )
+        gates.append(name + ".ci.update_test")  # gitlab_ci's drift gate
+    elif ci == "native":
+        # CI as ordinary Bazel targets — no forge-native file, so C2 is
+        # satisfiable. The test jobs become `<name>.ci` (a test_suite); the
+        # publish jobs land in `<name>.ci.pipeline.json`, which the build-runner
+        # reads to drive artifact publishing on a push/tag.
+        #
+        # The GitLab-shaped inputs describe a *pipeline file* and have no meaning
+        # without one. Fail loudly rather than silently ignoring them — a repo
+        # that flips to `native` and keeps its `ci_include` would otherwise lose
+        # those lanes with no signal at all.
+        for arg, val in [
+            ("ci_include", include),
+            ("ci_variables", variables),
+            ("ci_stages", ci_stages),
+            ("ci_jobs", jobs),
+            ("ci_extra", ci_extra),
+        ]:
+            if val:
+                fail(
+                    "fastverk_project(ci = \"native\", {} = ...) — {} configures a ".format(arg, arg) +
+                    "generated pipeline FILE and does nothing under the native backend. " +
+                    "Port those jobs to ci_job()/ci_publish() in `ci_jobs_native`.",
+                )
+        ci_pipeline(
+            name = name + ".ci",
+            jobs = ci_jobs_native,
+            visibility = visibility,
+        )
+        gates.append(name + ".ci")
+    elif ci_jobs_native:
+        fail("fastverk_project(ci = \"none\", ci_jobs_native = ...) — nothing consumes those jobs.")
 
     # The release-products seam: a manifest of what the build graph produces, plus a
     # gate asserting that matches what the repo (and its enabled features) declared.
-    gates = [name + ".ci.update_test"]  # gitlab_ci's drift gate (always generated)
     if products:
         release_manifest(
             name = name + ".products",
