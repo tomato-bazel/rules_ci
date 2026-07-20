@@ -1,0 +1,44 @@
+load("@rules_ci//ci:defs.bzl", "ci_job", "ci_publish")
+load("@rules_ci//project:defs.bzl", "fastverk_project")
+
+# A repo whose CI is Bazel targets, not a generated pipeline file.
+#
+# This is the shape readiness criterion C2 (`ci-as-rules`) asks for: no
+# `.gitlab-ci.yml`, no `.github/workflows`, `MODULE.bazel` present. Before the
+# `ci` backend existed, fastverk_project could not produce it — the macro always
+# emitted the very file C2 forbids, so the criterion was unsatisfiable for every
+# repo that used it.
+#
+#   bazel test  //examples/native_project:project.ci        # the test gate
+#   bazel test  //examples/native_project:project.ci_gates  # the same, via the suite
+#
+# And, load-bearing: NO .gitlab-ci.yml is written anywhere by this target.
+package(default_visibility = ["//visibility:public"])
+
+fastverk_project(
+    name = "project",
+    ci = "native",
+    ci_jobs_native = [
+        ci_job(
+            name = "unit",
+            script = ["echo ok"],
+            stage = "test",
+        ),
+        ci_publish(
+            name = "pub",
+            artifact = ":unit.sh",
+            destination = "s3://example/native/",
+            kind = "static_cdn",
+        ),
+    ],
+    repo = "example/native",
+)
+
+# A repo that ships nothing and is built entirely off the BuildRun rail: no CI
+# wiring at all. `project_none.ci_gates` must still ANALYZE — it was the dangling
+# `.ci.update_test` reference in the gates list that made this shape impossible.
+fastverk_project(
+    name = "project_none",
+    ci = "none",
+    repo = "example/none",
+)
