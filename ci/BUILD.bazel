@@ -1,0 +1,16 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "defs.bzl",
+    "publish_runner.sh",
+])
+
+# The yaml-free CI runtime: ci_job / ci_publish / ci_pipeline — the complement to //project
+# (the GitLab-CI generator). A repo expresses its pipeline as targets, deletes .gitlab-ci.yml,
+# and the fastverk build-runner replays the <pipeline>.pipeline.json publish contract.
+bzl_library(
+    name = "defs",
+    srcs = ["defs.bzl"],
+)

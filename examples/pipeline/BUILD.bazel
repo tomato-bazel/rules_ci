@@ -1,0 +1,34 @@
+load("@rules_ci//ci:defs.bzl", "ci_job", "ci_pipeline", "ci_publish")
+
+# Smoke test of the //ci re-export: express a pipeline through @rules_ci//ci and confirm the
+# runtime (from rules_ci_ir) resolves through rules_ci.
+#   bazel test  //examples/pipeline:demo
+#   bazel build //examples/pipeline:demo.manifest
+package(default_visibility = ["//visibility:public"])
+
+ci_pipeline(
+    name = "demo",
+    jobs = [
+        ci_job(
+            name = "unit",
+            script = ["echo ok"],
+            stage = "test",
+        ),
+        ci_publish(
+            name = "pub",
+            artifact = ":unit.sh",
+            destination = "s3://example/demo/",
+            kind = "static_cdn",
+        ),
+        # `npm` kind: `artifact` is an `npm pack`-layout tarball and `destination`
+        # is the registry URL. Not a real tarball here — this only pins that the
+        # kind resolves and lands in `demo.pipeline.json`; the runner's own
+        # dry-run keeps `bazel run` harmless without credentials.
+        ci_publish(
+            name = "pub_npm",
+            artifact = ":unit.sh",
+            destination = "https://registry.example.com/api/v4/projects/1/packages/npm/",
+            kind = "npm",
+        ),
+    ],
+)
