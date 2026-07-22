@@ -53,6 +53,13 @@ studio's `aion_app(features = [...])`.
 Milestone 1: the `.gitlab-ci.yml` generator — emit + schema-validate + drift-gate a thin
 pipeline from a caller-supplied `include:` + CI variables.
 
+Milestone 4 (this revision): `ci =` selects the CI BACKEND, so the pipeline file stops
+being mandatory. The macro previously called `gitlab_ci()` unconditionally, which put it
+in direct contradiction with readiness criterion C2 (`ci-as-rules` requires the
+forge-native CI file to be ABSENT) — C2 was unsatisfiable for every repo using this macro.
+`ci = "native"` composes `//ci`'s `ci_job`/`ci_publish` targets instead and writes no such
+file; `ci = "none"` wires no CI at all.
+
 Milestone 3 (this revision): `features` + the release-products gate. A *feature* is a
 named bundle of (CI lane include(s), CI variables, expected shippable products). The
 upper layers own the feature CATALOG — studio's `aion_app(features = ["web", "tui"])`
@@ -71,18 +78,25 @@ Badges, git hooks, and the versioning workflow land in subsequent milestones.
 <pre>
 load("@rules_ci//project:defs.bzl", "fastverk_project")
 
-fastverk_project(<a href="#fastverk_project-name">name</a>, <a href="#fastverk_project-repo">repo</a>, <a href="#fastverk_project-ci_include">ci_include</a>, <a href="#fastverk_project-ci_variables">ci_variables</a>, <a href="#fastverk_project-ci_stages">ci_stages</a>, <a href="#fastverk_project-ci_jobs">ci_jobs</a>, <a href="#fastverk_project-ci_extra">ci_extra</a>, <a href="#fastverk_project-features">features</a>,
-                 <a href="#fastverk_project-products">products</a>, <a href="#fastverk_project-expected_products">expected_products</a>, <a href="#fastverk_project-gate_tests">gate_tests</a>, <a href="#fastverk_project-hooks">hooks</a>, <a href="#fastverk_project-hooks_dir">hooks_dir</a>, <a href="#fastverk_project-badges">badges</a>, <a href="#fastverk_project-host">host</a>,
-                 <a href="#fastverk_project-badge_branch">badge_branch</a>, <a href="#fastverk_project-write_to">write_to</a>, <a href="#fastverk_project-validate">validate</a>, <a href="#fastverk_project-visibility">visibility</a>)
+fastverk_project(<a href="#fastverk_project-name">name</a>, <a href="#fastverk_project-repo">repo</a>, <a href="#fastverk_project-ci_include">ci_include</a>, <a href="#fastverk_project-ci_variables">ci_variables</a>, <a href="#fastverk_project-ci_stages">ci_stages</a>, <a href="#fastverk_project-ci_jobs">ci_jobs</a>, <a href="#fastverk_project-ci_extra">ci_extra</a>, <a href="#fastverk_project-ci">ci</a>,
+                 <a href="#fastverk_project-ci_jobs_native">ci_jobs_native</a>, <a href="#fastverk_project-features">features</a>, <a href="#fastverk_project-products">products</a>, <a href="#fastverk_project-expected_products">expected_products</a>, <a href="#fastverk_project-gate_tests">gate_tests</a>, <a href="#fastverk_project-hooks">hooks</a>, <a href="#fastverk_project-hooks_dir">hooks_dir</a>,
+                 <a href="#fastverk_project-badges">badges</a>, <a href="#fastverk_project-host">host</a>, <a href="#fastverk_project-badge_branch">badge_branch</a>, <a href="#fastverk_project-write_to">write_to</a>, <a href="#fastverk_project-validate">validate</a>, <a href="#fastverk_project-visibility">visibility</a>)
 </pre>
 
-Generic project-level wiring: the CI generator + the release-products gate.
+Generic project-level wiring: the CI backend + the release-products gate.
 
-Generates `<write_to>` and the drift/validation gates:
+With `ci = "gitlab"` (the default), generates `<write_to>` and its gates:
 
     bazel run  //:<name>.ci.update           # (re)generate the pipeline into the tree
     bazel test //:<name>.ci.update_test      # CI-drift gate (CI + the pre-commit hook)
     bazel build //:<name>.ci_validate        # schema gate
+
+With `ci = "native"`, no forge-native file is written — CI is Bazel targets:
+
+    bazel test //:<name>.ci                  # the test gate (a test_suite)
+    # <name>.ci.pipeline.json                # publish jobs, read by the build-runner
+
+With `ci = "none"`, neither.
 
 And, when `products` is set, the release-products seam:
 
@@ -102,11 +116,13 @@ Plus the unified gate suite (and, with `hooks = True`, the installer):
 | :------------- | :------------- | :------------- |
 | <a id="fastverk_project-name"></a>name |  base name; generates `<name>.ci`, `<name>.ci.update`, `<name>.ci_validate`, and (when `products` is set) `<name>.products` + `<name>.products_drift_test`.   |  `"project"` |
 | <a id="fastverk_project-repo"></a>repo |  OWNER/REPO on the git host (e.g. "aion/db"). Used for the README badges.   |  `None` |
-| <a id="fastverk_project-ci_include"></a>ci_include |  base GitLab `include:` entries (list of dicts) — shared lane(s) to pull in.   |  `[]` |
-| <a id="fastverk_project-ci_variables"></a>ci_variables |  base global CI/CD variables (dict).   |  `{}` |
-| <a id="fastverk_project-ci_stages"></a>ci_stages |  explicit pipeline stages (usually empty — the included lane owns them).   |  `[]` |
-| <a id="fastverk_project-ci_jobs"></a>ci_jobs |  repo-local jobs (usually empty — jobs live in the shared lane).   |  `{}` |
-| <a id="fastverk_project-ci_extra"></a>ci_extra |  escape-hatch raw top-level keys merged into the generated pipeline.   |  `{}` |
+| <a id="fastverk_project-ci_include"></a>ci_include |  base GitLab `include:` entries (list of dicts) — shared lane(s) to pull in. `ci = "gitlab"` only.   |  `[]` |
+| <a id="fastverk_project-ci_variables"></a>ci_variables |  base global CI/CD variables (dict). `ci = "gitlab"` only.   |  `{}` |
+| <a id="fastverk_project-ci_stages"></a>ci_stages |  explicit pipeline stages (usually empty — the included lane owns them). `ci = "gitlab"` only.   |  `[]` |
+| <a id="fastverk_project-ci_jobs"></a>ci_jobs |  repo-local jobs (usually empty — jobs live in the shared lane). `ci = "gitlab"` only.   |  `{}` |
+| <a id="fastverk_project-ci_extra"></a>ci_extra |  escape-hatch raw top-level keys merged into the generated pipeline. `ci = "gitlab"` only.   |  `{}` |
+| <a id="fastverk_project-ci"></a>ci |  which CI backend to generate — one of `CI_BACKENDS`:<br><br>* `"gitlab"` (default) — a generated `.gitlab-ci.yml`. Unchanged behavior. * `"native"` — CI as `ci_job`/`ci_publish` Bazel targets, NO forge-native   file. This is what makes readiness criterion C2 (`ci-as-rules`, which   requires `.gitlab-ci.yml` to be absent) satisfiable — it was previously   unreachable for any repo using this macro, because the macro always   emitted the very file C2 forbids. `bazel test //:<name>.ci` is the gate. * `"none"` — no CI wiring, for a repo built entirely off the BuildRun rail.<br><br>The GitLab-shaped args (`ci_include`, `ci_variables`, `ci_stages`, `ci_jobs`, `ci_extra`) configure a generated pipeline FILE; passing them with a non-gitlab backend is an error rather than a silent no-op, so a repo flipping to `"native"` cannot quietly drop its lanes.   |  `"gitlab"` |
+| <a id="fastverk_project-ci_jobs_native"></a>ci_jobs_native |  `ci_job()` / `ci_publish()` results composed into the pipeline when `ci = "native"`. Test jobs become the `<name>.ci` test_suite; publish jobs land in `<name>.ci.pipeline.json` for the build-runner.   |  `[]` |
 | <a id="fastverk_project-features"></a>features |  resolved feature bundles, `{name: {"include": [...], "variables": {...}, "jobs": {...}, "expects": [{"kind","name"}, ...]}}`. Enabling a feature = its presence here; its `include`/`variables`/`jobs` union onto the base CI, and its `expects` join the declared product set for the drift gate. The upper layers turn `["web", "tui"]` into this dict; the generic layer never hardcodes which features exist. A sibling product ruleset can EXPORT a helper returning such a bundle (e.g. rules_tap's affected-test lane as inline `jobs`) — so fastverk_project composes it WITHOUT a hard dep on that ruleset. Example:<br><br>    load("@rules_tap//ci:defs.bzl", "tap_ci_feature")     fastverk_project(name = "project", repo = "aion/db",                      features = {"tap": tap_ci_feature()})  # adds the affected-test lane   |  `{}` |
 | <a id="fastverk_project-products"></a>products |  top-level product targets (labels) to run the `release_artifacts` aspect over — the inputs to the manifest + drift gate. Empty ⇒ no release-products targets.   |  `[]` |
 | <a id="fastverk_project-expected_products"></a>expected_products |  products the repo declares it ships, as `[{"kind","name"}, ...]` (merged with every enabled feature's `expects`). Drives the drift gate; empty (and no feature expects) ⇒ the manifest is still emitted but no gate is generated.   |  `[]` |

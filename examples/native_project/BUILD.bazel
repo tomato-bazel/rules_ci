@@ -1,5 +1,6 @@
 load("@rules_ci//ci:defs.bzl", "ci_job", "ci_publish")
 load("@rules_ci//project:defs.bzl", "fastverk_project")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # A repo whose CI is Bazel targets, not a generated pipeline file.
 #
@@ -41,4 +42,23 @@ fastverk_project(
     name = "project_none",
     ci = "none",
     repo = "example/none",
+)
+
+# Turn the load-bearing claim above ("NO .gitlab-ci.yml is written") into a gate.
+# A comment cannot fail CI, and this one guards readiness criterion C2 — see
+# no_pipeline_file_test.sh for why absence needs a query to assert it.
+genquery(
+    name = "backend.targets",
+    expression = "deps(//examples/native_project:project.ci_gates) + deps(//examples/native_project:project_none.ci_gates)",
+    scope = [
+        ":project.ci_gates",
+        ":project_none.ci_gates",
+    ],
+)
+
+sh_test(
+    name = "no_pipeline_file_test",
+    srcs = ["no_pipeline_file_test.sh"],
+    data = [":backend.targets"],
+    env = {"TARGETS": "$(rootpath :backend.targets)"},
 )

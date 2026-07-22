@@ -24,9 +24,16 @@ stardoc(
     out = "project_api.md",
     input = "//project:defs.bzl",
     # project/defs.bzl loads external rulesets — stardoc needs their bzl_libraries to resolve.
+    # //ci:defs is in this list because the `ci = "native"` backend made
+    # project/defs.bzl load it; stardoc fails ANALYSIS on a missing bzl_library, so
+    # forgetting one here turns `bazel test //...` red rather than degrading docs.
     deps = [
+        "//ci:defs",
         "//project:defs",
         "@rules_gitlab//gitlab:defs_bzl",
         "@rules_readme//readme:defs_bzl",
+        # //ci:defs.bzl in turn loads rules_shell; stardoc resolves TRANSITIVELY,
+        # so these are needed here even though project/defs.bzl never names them.
+        "@rules_shell//shell:rules_bzl",
     ],
 )
