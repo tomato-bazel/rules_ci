@@ -1,0 +1,38 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load(":defs.bzl", "FASTVERK_RBE_EXEC_PROPERTIES")
+
+package(default_visibility = ["//visibility:public"])
+
+# The fastverk RBE execution platform.
+#
+#   bazel build --config=exec-buildbarn \
+#               --extra_execution_platforms=@rules_ci//platforms:rbe //...
+#
+# `constraint_values` drive Bazel's toolchain resolution (pick the linux/x86_64
+# toolchains for actions that run here). `exec_properties` are sent to the buildbarn
+# scheduler, which routes each action to a worker whose advertised platform matches
+# EXACTLY — so `container-image` is both the routing label and part of the RBE
+# action-cache key. See defs.bzl for why it lives in one place.
+#
+# THIS IS ALSO THE SEAM FOR TWO PENDING DECISIONS, which is most of why it is worth
+# centralizing now rather than after either is made:
+#
+#   * Digest-pinning. Making the platform string a digest is a one-line change here
+#     instead of an N-repo migration — which is currently the practical reason the
+#     fleet runs a mutable tag.
+#   * Building from laptops. A laptop must present exec properties byte-identical to
+#     CI's or its actions route nowhere. Copies that "look the same" are exactly what
+#     fails at 3pm on someone's machine; one definition removes the class.
+platform(
+    name = "rbe",
+    constraint_values = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+    exec_properties = FASTVERK_RBE_EXEC_PROPERTIES,
+)
+
+bzl_library(
+    name = "defs",
+    srcs = ["defs.bzl"],
+)
