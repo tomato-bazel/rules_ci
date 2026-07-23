@@ -4,6 +4,31 @@ All notable changes to rules_ci. The format is loosely
 [Keep a Changelog](https://keepachangelog.com/) — version headers
 mirror the published bazel-registry entries.
 
+## 0.2.1 — `ci_job(test = ...)` no longer produces an empty gate
+
+`ci_job(test = X)` built `test_suite(tests = [X], tags = ["ci-job", "ci-stage=…"])`,
+and a `test_suite`'s tags FILTER its direct members. No ordinary test carries
+`ci-job`, so the suite resolved to EMPTY and `bazel test //ci:<job>` passed having
+run nothing.
+
+That is the worst failure mode a gate has: it does not break, it reports green
+while verifying nothing — and it did so for exactly the targets people name
+explicitly as jobs, which tend to be the security-shaped ones. Found in aion/graph
+(`//ci:graph_server_tests` → 0 tests, guarding a deprovision blast radius) and
+aion/idp (`//ci:unit` → 0 tests).
+
+It hid because a job aliasing something that was ITSELF a `test_suite` expanded
+correctly — nested suites are expanded, not filtered — so the breakage looked
+target-specific. Every in-repo example used `script =`, so the alias path was
+never exercised.
+
+- `ci_job(test = ...)` now routes the aliased target through an untagged inner
+  `<name>.tests` suite; the outer suite keeps `job_tags` for introspection / the
+  IR round-trip. NB the generated `<name>.tests` name is new and can collide.
+- `//examples/pipeline:job_alias_not_vacuous_test` pins it: a `ci_job(test = ...)`
+  over a test carrying its own unrelated tags, asserted via `genquery` to contain
+  that test. Verified to FAIL on the pre-fix macro.
+
 ## 0.2.0 — `ci_publish(kind = "npm")`
 
 Adds `npm` to `PUBLISH_KINDS`, so a repo that publishes an npm package can go

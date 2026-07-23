@@ -1,10 +1,21 @@
 load("@rules_ci//ci:defs.bzl", "ci_job", "ci_pipeline", "ci_publish")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # Smoke test of the //ci re-export: express a pipeline through @rules_ci//ci and confirm the
 # runtime (from rules_ci_ir) resolves through rules_ci.
 #   bazel test  //examples/pipeline:demo
 #   bazel build //examples/pipeline:demo.manifest
 package(default_visibility = ["//visibility:public"])
+
+# A test carrying its OWN tags — the shape that exposed the vacuous-suite bug.
+# Every real test has tags (`savvi_ts_package` stamps `unit`, sizes imply others),
+# and none of them carry `ci-job` / `ci-stage=…`, so a tagged job suite filtered
+# them all out. Kept deliberately tagged: an untagged test would not reproduce it.
+sh_test(
+    name = "tagged_unit_test",
+    srcs = ["tagged_unit_test.sh"],
+    tags = ["unit"],
+)
 
 ci_pipeline(
     name = "demo",
@@ -13,6 +24,14 @@ ci_pipeline(
             name = "unit",
             script = ["echo ok"],
             stage = "test",
+        ),
+        # `test =` (aliasing an existing test) rather than `script =`. Until this
+        # example existed, every example used `script =`, so the alias path — the
+        # one every migrating repo actually uses — was never exercised.
+        ci_job(
+            name = "aliased",
+            stage = "test",
+            test = ":tagged_unit_test",
         ),
         ci_publish(
             name = "pub",
@@ -31,4 +50,25 @@ ci_pipeline(
             kind = "npm",
         ),
     ],
+)
+
+# Turn "a `test =` job actually contains its test" into a gate.
+#
+# A comment cannot fail CI, and this claim silently stopped being true: a
+# test_suite's tags filter its direct members, so the job suite resolved to
+# nothing and `bazel test` passed having run zero tests. Absence needs a query to
+# assert it — same reasoning as native_project's no_pipeline_file_test.
+genquery(
+    name = "aliased.query",
+    expression = "tests(//examples/pipeline:aliased)",
+    scope = [":aliased"],
+    # NB not named `aliased.tests`: `ci_job(test = ...)` generates that name for
+    # its inner suite (see ci/defs.bzl), and the collision is a build error.
+)
+
+sh_test(
+    name = "job_alias_not_vacuous_test",
+    srcs = ["job_alias_not_vacuous_test.sh"],
+    data = [":aliased.query"],
+    env = {"TESTS": "$(rootpath :aliased.query)"},
 )

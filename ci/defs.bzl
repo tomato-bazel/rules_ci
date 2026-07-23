@@ -80,7 +80,26 @@ def ci_job(
         )
     else:
         # Alias an existing test/test_suite as a named job so it can be a pipeline member.
-        native.test_suite(name = name, tests = [test], tags = job_tags)
+        #
+        # TWO suites, and the inner one is load-bearing. A `test_suite`'s `tags` FILTER
+        # its direct members: a test that does not itself carry every positive tag is
+        # dropped from the suite. `job_tags` always contains `ci-job` and `ci-stage=…`,
+        # which no ordinary test carries — so `test_suite(tests = [test], tags = job_tags)`
+        # silently resolved to an EMPTY suite, and `bazel test //ci:<job>` passed having
+        # run nothing.
+        #
+        # That is the worst failure mode a CI gate has: it does not break, it reports
+        # green while verifying nothing, and it does so for exactly the security-shaped
+        # targets people name explicitly as jobs.
+        #
+        # Nested `test_suite`s are EXPANDED rather than filtered, so routing the aliased
+        # target through an untagged inner suite restores the members while the outer
+        # suite keeps the tags for introspection / the IR round-trip. This is also why
+        # the bug hid for so long: a job aliasing a target that was ITSELF a test_suite
+        # (e.g. `test = "//proto:aip_lint"`) worked correctly, so the breakage looked
+        # target-specific rather than systematic.
+        native.test_suite(name = "%s.tests" % name, tests = [test])
+        native.test_suite(name = name, tests = ["%s.tests" % name], tags = job_tags)
 
     return struct(
         kind = "test",
