@@ -4,6 +4,32 @@ All notable changes to rules_ci. The format is loosely
 [Keep a Changelog](https://keepachangelog.com/) — version headers
 mirror the published bazel-registry entries.
 
+## 0.3.0 — `@rules_ci//platforms:rbe`
+
+The fastverk RBE execution platform, defined once instead of copied per repo.
+
+`container-image` is the buildbarn scheduler's ROUTING KEY and part of the RBE
+action-cache key — it must byte-match the worker pool's advertised platform or the
+scheduler answers "No workers exist for … container-image=…". A value with that
+property, copied into every consumer, drifts, and it had: aion/lean and aion/e2e
+both declared the stock `ghcr.io/catthehacker/ubuntu:act-22.04` while the
+RbeCluster worker advertised `…/tbzl-rbe-worker:act-22.04-libtinfo5-py3` — two
+different pools, one of them missing the libtinfo5 that the prebuilt LLVM clang
+links.
+
+- `@rules_ci//platforms:rbe` — use with
+  `--extra_execution_platforms=@rules_ci//platforms:rbe`.
+- `FASTVERK_RBE_CONTAINER_IMAGE` / `FASTVERK_RBE_EXEC_PROPERTIES` in
+  `//platforms:defs.bzl`, for consumers that set the exec property directly.
+- defs.bzl records why the value is a mutable tag rather than the digest pin the
+  rbe-api contract prefers: the platform string is in every action-cache key, so a
+  digest discards the whole cache on any image change. That is survivable with
+  hermetic toolchains and stops being survivable once a toolchain comes from the
+  image — which makes this constant the thing that must become a digest BEFORE
+  host toolchains are safe.
+
+Ships alongside the 0.2.1 `ci_job` fixes below, which had not been released.
+
 ## 0.2.1 — `ci_job(test = ...)` no longer produces an empty gate
 
 `ci_job(test = X)` built `test_suite(tests = [X], tags = ["ci-job", "ci-stage=…"])`,
