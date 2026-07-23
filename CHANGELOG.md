@@ -4,6 +4,41 @@ All notable changes to rules_ci. The format is loosely
 [Keep a Changelog](https://keepachangelog.com/) — version headers
 mirror the published bazel-registry entries.
 
+## 0.2.1 — `ci_job(test = ...)` no longer produces an empty gate
+
+`ci_job(test = X)` built `test_suite(tests = [X], tags = ["ci-job", "ci-stage=…"])`,
+and a `test_suite`'s tags FILTER its direct members. No ordinary test carries
+`ci-job`, so the suite resolved to EMPTY and `bazel test //ci:<job>` passed having
+run nothing.
+
+That is the worst failure mode a gate has: it does not break, it reports green
+while verifying nothing — and it did so for exactly the targets people name
+explicitly as jobs, which tend to be the security-shaped ones. Found in aion/graph
+(`//ci:graph_server_tests` → 0 tests, guarding a deprovision blast radius) and
+aion/idp (`//ci:unit` → 0 tests).
+
+It hid because a job aliasing something that was ITSELF a `test_suite` expanded
+correctly — nested suites are expanded, not filtered — so the breakage looked
+target-specific. Every in-repo example used `script =`, so the alias path was
+never exercised.
+
+- `ci_job(test = ...)` now routes the aliased target through an untagged inner
+  `<name>.tests` suite; the outer suite keeps `job_tags` for introspection / the
+  IR round-trip. NB the generated `<name>.tests` name is new and can collide.
+- `ci_job(test = ...)` now also GENERATES `<name>.not_vacuous_test`, a per-job
+  gate asserting the job expands to ≥1 test. The fix above removes the cause we
+  know about, not the failure mode: a `test_suite` with no matching members
+  resolves to nothing rather than erroring, so aliasing an empty suite still
+  yields a job that passes having run zero tests. Vacuity is invisible in
+  `bazel test` output and in `pipeline.json` (which records job labels, not the
+  tests behind them), so nothing else here can notice it. Per-job, not
+  per-pipeline: `tests(<pipeline>)` is non-empty as long as ANY job has tests, so
+  a pipeline-wide check cannot localize — or even detect — one hollow job among
+  several. Opt out with `vacuity_gate = False`. `script =` jobs get no gate;
+  they cannot be vacuous.
+- Verified both directions: the gate FAILS (naming the job) against the pre-fix
+  macro and passes after.
+
 ## 0.2.0 — `ci_publish(kind = "npm")`
 
 Adds `npm` to `PUBLISH_KINDS`, so a repo that publishes an npm package can go

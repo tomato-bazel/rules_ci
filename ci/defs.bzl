@@ -35,6 +35,7 @@ def ci_job(
         size = "medium",
         tags = [],
         data = [],
+        vacuity_gate = True,
         **kwargs):
     """A single pipeline job. Returns a struct consumed by `ci_pipeline(jobs = [...])`.
 
@@ -53,6 +54,9 @@ def ci_job(
       size: `sh_test` size (script jobs only).
       tags: extra tags added to the job.
       data: extra runtime data for script jobs.
+      vacuity_gate: for `test =` jobs, also emit `<name>.not_vacuous_test` — a gate asserting
+        the job actually expands to at least one test. Set False only for a job deliberately
+        allowed to be empty. Ignored by `script =` jobs, which cannot be vacuous.
       **kwargs: forwarded to the underlying `sh_test`.
 
     Returns:
@@ -80,7 +84,57 @@ def ci_job(
         )
     else:
         # Alias an existing test/test_suite as a named job so it can be a pipeline member.
-        native.test_suite(name = name, tests = [test], tags = job_tags)
+        #
+        # TWO suites, and the inner one is load-bearing. A `test_suite`'s `tags` FILTER
+        # its direct members: a test that does not itself carry every positive tag is
+        # dropped from the suite. `job_tags` always contains `ci-job` and `ci-stage=…`,
+        # which no ordinary test carries — so `test_suite(tests = [test], tags = job_tags)`
+        # silently resolved to an EMPTY suite, and `bazel test //ci:<job>` passed having
+        # run nothing.
+        #
+        # That is the worst failure mode a CI gate has: it does not break, it reports
+        # green while verifying nothing, and it does so for exactly the security-shaped
+        # targets people name explicitly as jobs.
+        #
+        # Nested `test_suite`s are EXPANDED rather than filtered, so routing the aliased
+        # target through an untagged inner suite restores the members while the outer
+        # suite keeps the tags for introspection / the IR round-trip. This is also why
+        # the bug hid for so long: a job aliasing a target that was ITSELF a test_suite
+        # (e.g. `test = "//proto:aip_lint"`) worked correctly, so the breakage looked
+        # target-specific rather than systematic.
+        native.test_suite(name = "%s.tests" % name, tests = [test])
+        native.test_suite(name = name, tests = ["%s.tests" % name], tags = job_tags)
+
+        # And a gate that the job is not EMPTY.
+        #
+        # The fix above removes the cause we know about, but not the failure mode: a
+        # `test_suite` with no matching members resolves to nothing rather than
+        # erroring, so aliasing an empty suite (or one whose own tag filter matched
+        # nothing) still yields a job that passes having run zero tests. Vacuity is
+        # invisible in `bazel test` output and identical to success in the pipeline
+        # manifest, which records job labels rather than the tests behind them — so
+        # nothing else in this ruleset can notice it.
+        #
+        # Per-job rather than per-pipeline on purpose: `tests(<pipeline>)` is
+        # non-empty as long as ANY job has tests, so a whole-pipeline check cannot
+        # localize (or even detect) one hollow job among several.
+        if vacuity_gate:
+            native.genquery(
+                name = "%s.query" % name,
+                expression = "tests(%s)" % native.package_relative_label(name),
+                scope = [":" + name],
+            )
+            sh_test(
+                name = "%s.not_vacuous_test" % name,
+                srcs = ["@rules_ci//ci:not_vacuous_test.sh"],
+                data = [":%s.query" % name],
+                env = {
+                    "TESTS": "$(rootpath :%s.query)" % name,
+                    "JOB": name,
+                },
+                size = "small",
+                tags = ["ci-vacuity-gate"],
+            )
 
     return struct(
         kind = "test",
