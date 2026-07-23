@@ -25,9 +25,19 @@ never exercised.
 - `ci_job(test = ...)` now routes the aliased target through an untagged inner
   `<name>.tests` suite; the outer suite keeps `job_tags` for introspection / the
   IR round-trip. NB the generated `<name>.tests` name is new and can collide.
-- `//examples/pipeline:job_alias_not_vacuous_test` pins it: a `ci_job(test = ...)`
-  over a test carrying its own unrelated tags, asserted via `genquery` to contain
-  that test. Verified to FAIL on the pre-fix macro.
+- `ci_job(test = ...)` now also GENERATES `<name>.not_vacuous_test`, a per-job
+  gate asserting the job expands to ≥1 test. The fix above removes the cause we
+  know about, not the failure mode: a `test_suite` with no matching members
+  resolves to nothing rather than erroring, so aliasing an empty suite still
+  yields a job that passes having run zero tests. Vacuity is invisible in
+  `bazel test` output and in `pipeline.json` (which records job labels, not the
+  tests behind them), so nothing else here can notice it. Per-job, not
+  per-pipeline: `tests(<pipeline>)` is non-empty as long as ANY job has tests, so
+  a pipeline-wide check cannot localize — or even detect — one hollow job among
+  several. Opt out with `vacuity_gate = False`. `script =` jobs get no gate;
+  they cannot be vacuous.
+- Verified both directions: the gate FAILS (naming the job) against the pre-fix
+  macro and passes after.
 
 ## 0.2.0 — `ci_publish(kind = "npm")`
 
