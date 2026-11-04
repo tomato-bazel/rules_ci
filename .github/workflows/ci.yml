@@ -23,3 +23,25 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - working-directory: translator
         run: cargo test --workspace
+
+  readme:
+    name: README drift gate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      USE_BAZEL_VERSION: "9.3.1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+      - name: Check the generated README
+        run: |
+          bazel --batch --nohome_rc --nosystem_rc test \
+            --registry=https://registry.tbzl.dev/ \
+            --registry=https://bcr.bazel.build/ \
+            //:gates --test_output=errors
