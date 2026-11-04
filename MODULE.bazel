@@ -34,7 +34,7 @@ bazel_dep(name = "rules_shell", version = "0.6.1")
 # published. rules_ci-as-root doesn't need the fix (its own python default is 3.12); consumers
 # get it once this bump + the 0.3.3 publish land. (aion-rules tests it now via a local override.)
 bazel_dep(name = "rules_gitlab", version = "0.3.2")
-bazel_dep(name = "rules_readme", version = "0.0.3")
+bazel_dep(name = "rules_readme", version = "0.0.4")
 bazel_dep(name = "rules_python", version = "1.7.0")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")

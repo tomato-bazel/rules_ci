@@ -31,7 +31,7 @@ markdown_fragment(
 )
 
 readme(
-    name = "readme",
+    name = "readme_doc",
     template = "README.md.tmpl",
     fragments = [
         ":api_project",
@@ -46,4 +46,15 @@ readme(
 test_suite(
     name = "gates",
     tests = [":readme.write_test"],
+)
+
+# Preserve the established README regeneration and drift-check labels.
+alias(
+    name = "readme.write",
+    actual = ":readme_doc.write",
+)
+
+alias(
+    name = "readme.write_test",
+    actual = ":readme_doc.write_test",
 )
