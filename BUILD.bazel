@@ -54,9 +54,9 @@ alias(
     actual = ":readme_doc.write",
 )
 
-alias(
+test_suite(
     name = "readme.write_test",
-    actual = ":readme_doc.write_test",
+    tests = [":readme_doc.write_test"],
 )
 
 alias(
