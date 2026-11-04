@@ -58,3 +58,8 @@ alias(
     name = "readme.write_test",
     actual = ":readme_doc.write_test",
 )
+
+alias(
+    name = "readme",
+    actual = ":readme_doc",
+)
